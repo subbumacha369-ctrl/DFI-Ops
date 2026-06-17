@@ -11,8 +11,12 @@ function siteUrl(request: Request): string {
   );
 }
 
-/** GET /api/organizations/:orgId/invitations — pending invitations (admins). */
-export async function GET(_request: Request, { params }: Ctx) {
+function acceptUrlFor(request: Request, token: string): string {
+  return `${siteUrl(request)}/accept-invite?token=${token}`;
+}
+
+/** GET /api/organizations/:orgId/invitations — all invitations + status (admins). */
+export async function GET(request: Request, { params }: Ctx) {
   const { orgId } = await params;
   const supabase = await createClient();
   const {
@@ -22,13 +26,33 @@ export async function GET(_request: Request, { params }: Ctx) {
 
   const { data, error: qErr } = await supabase
     .from("org_invitations")
-    .select("id, email, role, status, expires_at, created_at")
+    .select("id, email, role, status, token, expires_at, created_at")
     .eq("org_id", orgId)
-    .eq("status", "pending")
     .order("created_at", { ascending: false });
 
   if (qErr) return error(qErr.message, 500);
-  return json({ invitations: data ?? [] });
+
+  const now = Date.now();
+  const invitations = (data ?? []).map((inv) => {
+    // A still-"pending" invite past its expiry is effectively expired.
+    const status =
+      inv.status === "pending" && new Date(inv.expires_at).getTime() < now
+        ? "expired"
+        : inv.status;
+    const canResend = status === "pending" || status === "expired";
+    return {
+      id: inv.id,
+      email: inv.email,
+      role: inv.role,
+      status,
+      expires_at: inv.expires_at,
+      created_at: inv.created_at,
+      // Admins can copy/share the link directly as an email fallback.
+      acceptUrl: canResend ? acceptUrlFor(request, inv.token) : null,
+    };
+  });
+
+  return json({ invitations });
 }
 
 /** POST /api/organizations/:orgId/invitations — invite a member + email them. */
@@ -65,10 +89,11 @@ export async function POST(request: Request, { params }: Ctx) {
     supabase.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle(),
   ]);
 
-  const acceptUrl = `${siteUrl(request)}/accept-invite?token=${invite.token}`;
+  const acceptUrl = acceptUrlFor(request, invite.token);
   const mail = invitationEmail({
     orgName: org?.name ?? "your team",
     inviterName: inviter?.full_name ?? inviter?.email ?? "A teammate",
+    role: invite.role,
     acceptUrl,
   });
   const emailResult = await sendEmail({ to: invite.email, ...mail });
@@ -76,7 +101,10 @@ export async function POST(request: Request, { params }: Ctx) {
   return json(
     {
       invitation: { id: invite.id, email: invite.email, role: invite.role, status: invite.status },
+      // Returned so the admin can copy/share the link if email delivery is off.
+      acceptUrl,
       emailSent: emailResult.ok,
+      emailError: emailResult.ok ? undefined : emailResult.error,
     },
     { status: 201 },
   );

@@ -97,7 +97,7 @@ export interface Database {
           status: InvitationStatus; invited_by: string; expires_at: string; created_at: string;
         },
         { org_id: string; email: string; role?: OrgRole; invited_by: string },
-        Partial<{ status: InvitationStatus; role: OrgRole }>
+        Partial<{ status: InvitationStatus; role: OrgRole; expires_at: string }>
       >;
       departments: Table<
         { id: string; org_id: string; name: string; parent_id: string | null } & Timestamps,

@@ -33,6 +33,21 @@ export const resetPasswordSchema = z
     path: ["confirm"],
   });
 
+export const changePasswordSchema = z
+  .object({
+    current: z.string().min(1, "Enter your current password"),
+    password: passwordSchema,
+    confirm: z.string(),
+  })
+  .refine((v) => v.password === v.confirm, {
+    message: "Passwords do not match",
+    path: ["confirm"],
+  })
+  .refine((v) => v.password !== v.current, {
+    message: "New password must be different from your current one",
+    path: ["password"],
+  });
+
 export const mfaVerifySchema = z.object({
   code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code"),
 });
@@ -41,4 +56,5 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type SignupInput = z.infer<typeof signupSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type MfaVerifyInput = z.infer<typeof mfaVerifySchema>;

@@ -16,6 +16,35 @@ export function formatDate(value: string | Date | null | undefined): string {
   }).format(d);
 }
 
+/**
+ * Copy text to the clipboard, falling back to a hidden textarea + execCommand
+ * for older/insecure (non-HTTPS) contexts. Resolves to whether it succeeded.
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through to legacy path */
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Initials for avatar fallbacks. */
 export function initials(name: string | null | undefined, email?: string): string {
   const source = name?.trim() || email?.split("@")[0] || "?";

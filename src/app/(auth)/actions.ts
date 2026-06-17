@@ -9,6 +9,7 @@ import {
   signupSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 } from "@/lib/validations/auth";
 
 type ActionResult = { error?: string; message?: string };
@@ -123,4 +124,43 @@ export async function updatePassword(input: {
   });
   if (error) return { error: error.message };
   redirect("/");
+}
+
+/**
+ * Change the password for a signed-in user. Re-verifies the current password
+ * first (updateUser alone trusts the session), so a borrowed/forgotten session
+ * cannot silently rotate credentials.
+ */
+export async function changePassword(input: {
+  current: string;
+  password: string;
+  confirm: string;
+}): Promise<ActionResult> {
+  const parsed = changePasswordSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid password" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.email) return { error: "You must be signed in" };
+
+  const { success } = await checkLimit(authRatelimit, `change-pw:${user.id}`);
+  if (!success) return { error: "Too many attempts. Try again shortly." };
+
+  // Verify the current password by re-authenticating.
+  const { error: verifyError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: parsed.data.current,
+  });
+  if (verifyError) return { error: "Current password is incorrect" };
+
+  const { error } = await supabase.auth.updateUser({
+    password: parsed.data.password,
+  });
+  if (error) return { error: error.message };
+
+  return { message: "Password updated." };
 }

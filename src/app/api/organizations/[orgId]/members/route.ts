@@ -56,6 +56,22 @@ export async function PATCH(request: Request, { params }: Ctx) {
   const parsed = updateMemberRoleSchema.safeParse(body);
   if (!parsed.success) return error("Invalid role", 422);
 
+  // A role can only be assigned to someone who has joined the org (i.e. accepted
+  // their invitation). Guard explicitly so the caller gets a clear reason rather
+  // than a generic "not permitted".
+  const { data: existing } = await supabase
+    .from("org_members")
+    .select("user_id")
+    .eq("org_id", orgId)
+    .eq("user_id", targetUserId)
+    .maybeSingle();
+  if (!existing) {
+    return error(
+      "This person hasn't joined yet. They must accept their invitation before a role can be assigned.",
+      409,
+    );
+  }
+
   const { data, error: uErr } = await supabase
     .from("org_members")
     .update({ role: parsed.data.role })
@@ -65,7 +81,7 @@ export async function PATCH(request: Request, { params }: Ctx) {
     .maybeSingle();
 
   if (uErr) return error(uErr.message, 403);
-  if (!data) return error("Update not permitted", 403);
+  if (!data) return error("You don't have permission to change this member's role", 403);
   return json({ member: data });
 }
 

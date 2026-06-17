@@ -36,6 +36,7 @@ export async function sendEmail(params: {
 export function invitationEmail(params: {
   orgName: string;
   inviterName: string;
+  role: string;
   acceptUrl: string;
 }): { subject: string; html: string } {
   return {
@@ -43,12 +44,17 @@ export function invitationEmail(params: {
     html: `
       <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto">
         <h2 style="color:#0f766e">Join ${escapeHtml(params.orgName)}</h2>
-        <p>${escapeHtml(params.inviterName)} invited you to collaborate on Operations OS.</p>
+        <p>${escapeHtml(params.inviterName)} invited you to collaborate on Operations OS as
+           <strong style="text-transform:capitalize">${escapeHtml(params.role)}</strong>.</p>
         <p>
           <a href="${params.acceptUrl}"
              style="display:inline-block;background:#0f766e;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">
             Accept invitation
           </a>
+        </p>
+        <p style="color:#64748b;font-size:13px">
+          Or paste this link into your browser:<br />
+          <span style="word-break:break-all">${escapeHtml(params.acceptUrl)}</span>
         </p>
         <p style="color:#64748b;font-size:13px">This link expires in 14 days.</p>
       </div>`,

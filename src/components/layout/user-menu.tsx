@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { LogOut, Monitor, Moon, Shield, Sun } from "lucide-react";
 import { useUser } from "@/hooks/use-user";
 import { signOut } from "@/app/(auth)/actions";
 import { initials } from "@/lib/utils";
@@ -16,6 +18,9 @@ import {
 export function UserMenu() {
   const { data: user } = useUser();
   const { setTheme } = useTheme();
+  const pathname = usePathname();
+  // App routes are namespaced under /:orgSlug — use it to link account pages.
+  const orgSlug = pathname?.split("/").filter(Boolean)[0];
 
   return (
     <DropdownMenu>
@@ -32,6 +37,14 @@ export function UserMenu() {
           <p className="text-sm font-medium">{user?.profile?.full_name ?? "Account"}</p>
           <p className="text-xs font-normal text-muted-foreground">{user?.email}</p>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {orgSlug && (
+          <DropdownMenuItem asChild>
+            <Link href={`/${orgSlug}/settings/security` as never}>
+              <Shield className="size-4" /> Security
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => setTheme("light")}>
           <Sun className="size-4" /> Light
