@@ -3,14 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Search, UserPlus, MoreHorizontal, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
+import { Search, UserPlus, MoreHorizontal, ShieldOff, ShieldCheck, Trash2, Copy, RotateCw } from "lucide-react";
 import {
   useMembers, useDepartments, useTeams, useUpdateMember, useRemoveMember, useSetMemberStatus,
 } from "@/hooks/use-members";
 import { useMyRole } from "@/hooks/use-rbac";
-import { useInvitations, useInviteMember, useRevokeInvitation } from "@/hooks/use-invitations";
+import { useInvitations, useInviteMember, useRevokeInvitation, useResendInvitation } from "@/hooks/use-invitations";
 import { ROLE_LABEL, assignableRoles } from "@/lib/rbac";
-import { formatDate } from "@/lib/utils";
+import { formatDate, copyToClipboard } from "@/lib/utils";
 import { PersonAvatar } from "@/components/work/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,13 +71,13 @@ export function MemberManagement({ orgId, orgSlug }: { orgId: string; orgSlug: s
     <div className="space-y-4">
       <div className="spread flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">Add, invite, search, and manage everyone in the organization.</p>
-        {can("members.invite") && <InviteDialog orgId={orgId} actorRole={appRole} />}
+        {can("members.invite") && <InviteDialog orgId={orgId} />}
       </div>
 
       <Tabs defaultValue="members">
         <TabsList>
           <TabsTrigger value="members">Members</TabsTrigger>
-          <TabsTrigger value="invites">Pending invitations</TabsTrigger>
+          <TabsTrigger value="invites">Invitations</TabsTrigger>
         </TabsList>
 
         <TabsContent value="members">
@@ -151,28 +151,36 @@ export function MemberManagement({ orgId, orgSlug }: { orgId: string; orgSlug: s
   );
 }
 
-function InviteDialog({ orgId, actorRole }: { orgId: string; actorRole: AppRole | null }) {
+function InviteDialog({ orgId }: { orgId: string }) {
   const invite = useInviteMember(orgId);
   const [open, setOpen] = React.useState(false);
   const [email, setEmail] = React.useState("");
-  const [role, setRole] = React.useState<"admin" | "member" | "guest">("member");
+  const [link, setLink] = React.useState<string | null>(null);
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEmail(""); setLink(null); } }}>
       <DialogTrigger asChild><Button size="sm"><UserPlus className="size-4" /> Invite / Add member</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Invite a member</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2"><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="teammate@company.com" /></div>
-          <div className="space-y-2"><Label>Access level</Label>
-            <select value={role} onChange={(e) => setRole(e.target.value as "member")} className="w-full rounded-md border bg-background px-2 py-2 text-sm">
-              <option value="admin">Admin</option><option value="member">Member</option><option value="guest">Guest</option>
-            </select>
-            <p className="text-xs text-muted-foreground">Functional role ({actorRole ? "assignable up to your level" : ""}) can be set after they join.</p>
-          </div>
+          <p className="text-xs text-muted-foreground">They join as a pending member. Activate them and assign a role from the Members list after they accept.</p>
+          {link && (
+            <div className="space-y-1">
+              <Label>Invite link</Label>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
+                <Button type="button" variant="outline" onClick={async () => { const ok = await copyToClipboard(link); if (ok) toast.success("Link copied"); else toast.error("Could not copy"); }}>Copy</Button>
+              </div>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button disabled={invite.isPending || !email} onClick={async () => {
-            try { const r = await invite.mutateAsync({ email, role }); toast.success(r.emailSent ? "Invitation sent" : "Invitation created"); setOpen(false); setEmail(""); }
+            try {
+              const r = await invite.mutateAsync({ email, role: "member" });
+              if (r.emailSent) { toast.success(`Invitation emailed to ${email}`); setOpen(false); setEmail(""); }
+              else { toast.message("Invitation created — copy the link to share"); setLink(r.acceptUrl); }
+            }
             catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
           }}>{invite.isPending ? "Sending…" : "Send invitation"}</Button>
         </DialogFooter>
@@ -184,16 +192,39 @@ function InviteDialog({ orgId, actorRole }: { orgId: string; actorRole: AppRole 
 function PendingInvites({ orgId, canManage }: { orgId: string; canManage: boolean }) {
   const { data: invites, isLoading } = useInvitations(orgId);
   const revoke = useRevokeInvitation(orgId);
+  const resend = useResendInvitation(orgId);
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (!invites?.length) return <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No pending invitations.</CardContent></Card>;
+  if (!invites?.length) return <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No invitations yet.</CardContent></Card>;
+
+  async function copyLink(url: string) {
+    const ok = await copyToClipboard(url);
+    if (ok) toast.success("Invite link copied");
+    else toast.error("Could not copy");
+  }
+  async function doResend(id: string) {
+    try {
+      const r = await resend.mutateAsync(id);
+      toast.success(r.emailSent ? `Re-sent to ${r.invitation.email}` : "Invitation re-armed — copy the link to share");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Could not resend"); }
+  }
+
   return (
-    <Card>{invites.map((inv) => (
-      <div key={inv.id} className="flex items-center gap-3 border-b px-4 py-2.5 last:border-0">
-        <div className="flex-1"><div className="text-sm font-medium">{inv.email}</div><div className="text-xs text-muted-foreground">{inv.role} · expires {formatDate(inv.expires_at)}</div></div>
-        <Badge variant="secondary">{inv.status}</Badge>
-        {canManage && <Button variant="ghost" size="sm" onClick={() => revoke.mutate(inv.id)}>Revoke</Button>}
-      </div>
-    ))}</Card>
+    <Card>{invites.map((inv) => {
+      const open = inv.status === "pending" || inv.status === "expired";
+      return (
+        <div key={inv.id} className="flex items-center gap-3 border-b px-4 py-2.5 last:border-0">
+          <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{inv.email}</div><div className="text-xs text-muted-foreground">{inv.status === "expired" ? "expired" : "expires"} {formatDate(inv.expires_at)}</div></div>
+          <Badge variant={inv.status === "accepted" ? "default" : "secondary"} className="capitalize">{inv.status}</Badge>
+          {canManage && open && inv.acceptUrl && (
+            <Button variant="ghost" size="icon" className="size-8" aria-label="Copy invite link" onClick={() => copyLink(inv.acceptUrl!)}><Copy className="size-4" /></Button>
+          )}
+          {canManage && open && (
+            <Button variant="ghost" size="icon" className="size-8" aria-label="Resend invitation" disabled={resend.isPending} onClick={() => doResend(inv.id)}><RotateCw className="size-4" /></Button>
+          )}
+          {canManage && inv.status === "pending" && <Button variant="ghost" size="sm" onClick={() => revoke.mutate(inv.id)}>Revoke</Button>}
+        </div>
+      );
+    })}</Card>
   );
 }
 

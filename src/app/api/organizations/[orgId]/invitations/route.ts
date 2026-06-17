@@ -67,20 +67,47 @@ export async function POST(request: Request, { params }: Ctx) {
   const body = await request.json().catch(() => null);
   const parsed = inviteMemberSchema.safeParse(body);
   if (!parsed.success) return error("Invalid invitation", 422, parsed.error.flatten());
+  const emailLc = parsed.data.email.toLowerCase();
+
+  // If a pending invite already exists, return a friendly message + the existing
+  // link rather than letting the unique index throw a raw duplicate-key error.
+  const { data: dup } = await supabase
+    .from("org_invitations")
+    .select("id, token")
+    .eq("org_id", orgId)
+    .eq("email", emailLc)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (dup) {
+    return json(
+      {
+        error: "This user already has a pending invitation.",
+        code: "duplicate_pending",
+        invitation: { id: dup.id, email: emailLc, acceptUrl: acceptUrlFor(request, dup.token) },
+      },
+      { status: 409 },
+    );
+  }
 
   // Insert is allowed only for org admins (enforced by RLS).
   const { data: invite, error: iErr } = await supabase
     .from("org_invitations")
     .insert({
       org_id: orgId,
-      email: parsed.data.email.toLowerCase(),
+      email: emailLc,
       role: parsed.data.role,
       invited_by: user.id,
     })
     .select("id, email, role, token, status, expires_at")
     .maybeSingle();
 
-  if (iErr) return error(iErr.message, 403);
+  // 23505 = unique_violation (race against the one-pending-per-email index).
+  if (iErr) {
+    if ((iErr as { code?: string }).code === "23505") {
+      return error("This user already has a pending invitation.", 409);
+    }
+    return error(iErr.message, 403);
+  }
   if (!invite) return error("Could not create invitation", 403);
 
   // Best-effort email — the invitation already exists regardless of delivery.

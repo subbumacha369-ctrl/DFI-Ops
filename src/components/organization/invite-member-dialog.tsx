@@ -16,8 +16,6 @@ import {
   DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 
-const ROLES = ["admin", "member", "guest"] as const;
-
 export function InviteMemberDialog({ orgId }: { orgId: string }) {
   const [open, setOpen] = React.useState(false);
   const [result, setResult] = React.useState<InviteResult | null>(null);
@@ -55,8 +53,6 @@ export function InviteMemberDialog({ orgId }: { orgId: string }) {
     if (ok) toast.success("Link copied");
     else toast.error("Could not copy");
   }
-
-  const role = form.watch("role");
 
   return (
     <Dialog
@@ -106,7 +102,8 @@ export function InviteMemberDialog({ orgId }: { orgId: string }) {
             <DialogHeader>
               <DialogTitle>Invite a member</DialogTitle>
               <DialogDescription>
-                They&apos;ll get an email link to join this organization.
+                They&apos;ll get a link to join this organization. You can activate them
+                and assign a role once they&apos;ve joined.
               </DialogDescription>
             </DialogHeader>
 
@@ -124,24 +121,6 @@ export function InviteMemberDialog({ orgId }: { orgId: string }) {
                     {form.formState.errors.email.message}
                   </p>
                 )}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <div className="flex gap-2">
-                  {ROLES.map((r) => (
-                    <Button
-                      key={r}
-                      type="button"
-                      size="sm"
-                      variant={role === r ? "default" : "outline"}
-                      onClick={() => form.setValue("role", r)}
-                      className="capitalize"
-                    >
-                      {r}
-                    </Button>
-                  ))}
-                </div>
               </div>
             </div>
 
