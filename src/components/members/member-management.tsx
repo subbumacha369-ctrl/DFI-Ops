@@ -9,6 +9,7 @@ import {
 } from "@/hooks/use-members";
 import { useMyRole } from "@/hooks/use-rbac";
 import { useInvitations, useInviteMember, useRevokeInvitation, useResendInvitation } from "@/hooks/use-invitations";
+import { ApiError } from "@/lib/fetcher";
 import { ROLE_LABEL, assignableRoles } from "@/lib/rbac";
 import { formatDate, copyToClipboard } from "@/lib/utils";
 import { PersonAvatar } from "@/components/work/shared";
@@ -153,36 +154,66 @@ export function MemberManagement({ orgId, orgSlug }: { orgId: string; orgSlug: s
 
 function InviteDialog({ orgId }: { orgId: string }) {
   const invite = useInviteMember(orgId);
+  const resend = useResendInvitation(orgId);
   const [open, setOpen] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [link, setLink] = React.useState<string | null>(null);
+  // Set when the email already has a pending invite (Case 2): offer resend/copy.
+  const [dup, setDup] = React.useState<{ id: string; email: string; acceptUrl: string } | null>(null);
+
+  function reset() { setEmail(""); setLink(null); setDup(null); }
+
+  async function copy(url: string) {
+    const ok = await copyToClipboard(url);
+    if (ok) toast.success("Link copied"); else toast.error("Could not copy");
+  }
+
+  async function send() {
+    try {
+      const r = await invite.mutateAsync({ email, role: "member" });
+      if (r.emailSent) { toast.success(`Invitation emailed to ${email}`); setOpen(false); reset(); }
+      else { toast.message("Invitation created — copy the link to share"); setLink(r.acceptUrl); }
+    } catch (e) {
+      if (e instanceof ApiError && e.body?.code === "duplicate_pending") {
+        setDup(e.body.invitation as { id: string; email: string; acceptUrl: string });
+      } else {
+        toast.error(e instanceof Error ? e.message : "Failed");
+      }
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEmail(""); setLink(null); } }}>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
       <DialogTrigger asChild><Button size="sm"><UserPlus className="size-4" /> Invite / Add member</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Invite a member</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="space-y-2"><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="teammate@company.com" /></div>
+          <div className="space-y-2"><Label>Email</Label><Input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setDup(null); }} placeholder="teammate@company.com" /></div>
           <p className="text-xs text-muted-foreground">They join as a pending member. Activate them and assign a role from the Members list after they accept.</p>
+          {dup && (
+            <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+              <p className="text-sm">This user already has a pending invitation. Resend it?</p>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" disabled={resend.isPending} onClick={async () => {
+                  try { const r = await resend.mutateAsync(dup.id); toast.success(r.emailSent ? `Re-sent to ${dup.email}` : "Re-armed — copy the link"); if (!r.emailSent) setLink(r.acceptUrl); setDup(null); }
+                  catch (e) { toast.error(e instanceof Error ? e.message : "Could not resend"); }
+                }}>Resend</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => copy(dup.acceptUrl)}>Copy link</Button>
+              </div>
+            </div>
+          )}
           {link && (
             <div className="space-y-1">
               <Label>Invite link</Label>
               <div className="flex items-center gap-2">
                 <Input readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
-                <Button type="button" variant="outline" onClick={async () => { const ok = await copyToClipboard(link); if (ok) toast.success("Link copied"); else toast.error("Could not copy"); }}>Copy</Button>
+                <Button type="button" variant="outline" onClick={() => copy(link)}>Copy</Button>
               </div>
             </div>
           )}
         </div>
         <DialogFooter>
-          <Button disabled={invite.isPending || !email} onClick={async () => {
-            try {
-              const r = await invite.mutateAsync({ email, role: "member" });
-              if (r.emailSent) { toast.success(`Invitation emailed to ${email}`); setOpen(false); setEmail(""); }
-              else { toast.message("Invitation created — copy the link to share"); setLink(r.acceptUrl); }
-            }
-            catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
-          }}>{invite.isPending ? "Sending…" : "Send invitation"}</Button>
+          <Button disabled={invite.isPending || !email} onClick={send}>{invite.isPending ? "Sending…" : "Send invitation"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

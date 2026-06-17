@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { json, error, unauthorized } from "@/lib/api";
 import { inviteMemberSchema } from "@/lib/validations/organization";
 import { sendEmail, invitationEmail } from "@/services/notifications";
+import { effectiveInvitationStatus, isInvitationOpen } from "@/lib/invitations";
 
 type Ctx = { params: Promise<{ orgId: string }> };
 
@@ -34,12 +35,7 @@ export async function GET(request: Request, { params }: Ctx) {
 
   const now = Date.now();
   const invitations = (data ?? []).map((inv) => {
-    // A still-"pending" invite past its expiry is effectively expired.
-    const status =
-      inv.status === "pending" && new Date(inv.expires_at).getTime() < now
-        ? "expired"
-        : inv.status;
-    const canResend = status === "pending" || status === "expired";
+    const status = effectiveInvitationStatus(inv.status, inv.expires_at, now);
     return {
       id: inv.id,
       email: inv.email,
@@ -48,7 +44,7 @@ export async function GET(request: Request, { params }: Ctx) {
       expires_at: inv.expires_at,
       created_at: inv.created_at,
       // Admins can copy/share the link directly as an email fallback.
-      acceptUrl: canResend ? acceptUrlFor(request, inv.token) : null,
+      acceptUrl: isInvitationOpen(status) ? acceptUrlFor(request, inv.token) : null,
     };
   });
 
@@ -69,7 +65,28 @@ export async function POST(request: Request, { params }: Ctx) {
   if (!parsed.success) return error("Invalid invitation", 422, parsed.error.flatten());
   const emailLc = parsed.data.email.toLowerCase();
 
-  // If a pending invite already exists, return a friendly message + the existing
+  // Case 3: already a member of THIS org → friendly message, no error.
+  // Profiles RLS lets an admin read co-members, so this resolves precisely; a
+  // user who only belongs to another org isn't readable here, so cross-org
+  // invites are still allowed (multi-tenant).
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("email", emailLc)
+    .maybeSingle();
+  if (existingProfile) {
+    const { data: existingMember } = await supabase
+      .from("org_members")
+      .select("user_id")
+      .eq("org_id", orgId)
+      .eq("user_id", existingProfile.id)
+      .maybeSingle();
+    if (existingMember) {
+      return error("This user is already a member of this organization.", 409);
+    }
+  }
+
+  // Case 2: a pending invite already exists → friendly message + the existing
   // link rather than letting the unique index throw a raw duplicate-key error.
   const { data: dup } = await supabase
     .from("org_invitations")

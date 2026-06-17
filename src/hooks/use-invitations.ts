@@ -1,9 +1,10 @@
 "use client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/fetcher";
+import type { InvitationStatus } from "@/lib/invitations";
 import type { OrgRole } from "@/types";
 
-export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
+export type { InvitationStatus };
 
 export type Invitation = {
   id: string;
