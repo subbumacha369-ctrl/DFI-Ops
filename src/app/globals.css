@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Operations OS design tokens.
+  Canvas: cool graphite neutrals. Accent: a single confident jade/teal — calm,
+  operational, trustworthy. Boldness is spent on the accent alone; everything
+  else stays quiet so status and priority colors read clearly.
+*/
+@layer base {
+  :root {
+    --background: 180 22% 99%;
+    --foreground: 215 28% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 14%;
+
+    --primary: 168 76% 30%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 16% 96%;
+    --secondary-foreground: 215 25% 20%;
+
+    --muted: 210 16% 96%;
+    --muted-foreground: 215 14% 42%;
+
+    --accent: 168 48% 94%;
+    --accent-foreground: 168 76% 22%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 20% 90%;
+    --input: 214 20% 90%;
+    --ring: 168 76% 30%;
+
+    --priority-low: 215 14% 55%;
+    --priority-medium: 38 92% 48%;
+    --priority-high: 24 90% 52%;
+    --priority-critical: 0 72% 50%;
+
+    --radius: 0.6rem;
+  }
+
+  .dark {
+    --background: 215 28% 9%;
+    --foreground: 210 16% 92%;
+
+    --card: 215 26% 11%;
+    --card-foreground: 210 16% 92%;
+    --popover: 215 26% 11%;
+    --popover-foreground: 210 16% 92%;
+
+    --primary: 168 64% 42%;
+    --primary-foreground: 215 28% 9%;
+
+    --secondary: 215 20% 16%;
+    --secondary-foreground: 210 16% 92%;
+
+    --muted: 215 20% 16%;
+    --muted-foreground: 215 14% 62%;
+
+    --accent: 215 20% 18%;
+    --accent-foreground: 168 64% 60%;
+
+    --destructive: 0 62% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 18% 20%;
+    --input: 215 18% 20%;
+    --ring: 168 64% 42%;
+
+    --priority-low: 215 14% 60%;
+    --priority-medium: 38 90% 55%;
+    --priority-high: 24 88% 58%;
+    --priority-critical: 0 70% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
