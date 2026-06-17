@@ -20,15 +20,24 @@ export function LoginForm() {
     defaultValues: { email: "", password: "" },
   });
   const [pending, setPending] = React.useState(false);
+  // Read ?redirect= client-side so this statically-rendered page needs no Suspense.
+  const [redirectTo, setRedirectTo] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setRedirectTo(new URLSearchParams(window.location.search).get("redirect"));
+  }, []);
 
   async function onSubmit(values: LoginInput) {
     setPending(true);
-    const res = await signInWithPassword(values);
+    const res = await signInWithPassword(values, redirectTo ?? undefined);
     if (res?.error) {
       toast.error(res.error);
       setPending(false);
     }
   }
+
+  const signupHref = redirectTo
+    ? `/signup?redirect=${encodeURIComponent(redirectTo)}`
+    : "/signup";
 
   const demo = isDemoMode();
 
@@ -97,7 +106,7 @@ export function LoginForm() {
 
       <p className="text-center text-sm text-muted-foreground">
         No account?{" "}
-        <Link href="/signup" className="font-medium text-foreground hover:underline">
+        <Link href={signupHref as never} className="font-medium text-foreground hover:underline">
           Create one
         </Link>
       </p>

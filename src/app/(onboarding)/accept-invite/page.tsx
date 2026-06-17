@@ -32,7 +32,7 @@ export default async function AcceptInvitePage({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <AcceptInvite token={token} />
+          <AcceptInvite token={token} userEmail={user.email} />
           <Link href="/" className="block text-center text-sm text-muted-foreground hover:text-foreground">
             Not now
           </Link>

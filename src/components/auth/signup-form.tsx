@@ -20,10 +20,14 @@ export function SignupForm() {
   });
   const [pending, setPending] = React.useState(false);
   const [sent, setSent] = React.useState<string | null>(null);
+  const [redirectTo, setRedirectTo] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setRedirectTo(new URLSearchParams(window.location.search).get("redirect"));
+  }, []);
 
   async function onSubmit(values: SignupInput) {
     setPending(true);
-    const res = await signUp(values);
+    const res = await signUp(values, redirectTo ?? undefined);
     setPending(false);
     if (res?.error) {
       toast.error(res.error);
@@ -32,12 +36,16 @@ export function SignupForm() {
     if (res?.message) setSent(res.message);
   }
 
+  const loginHref = redirectTo
+    ? `/login?redirect=${encodeURIComponent(redirectTo)}`
+    : "/login";
+
   if (sent) {
     return (
       <div className="space-y-3">
         <h1 className="text-2xl font-semibold tracking-tight">Check your email</h1>
         <p className="text-sm text-muted-foreground">{sent}</p>
-        <Link href="/login" className="text-sm font-medium text-foreground hover:underline">
+        <Link href={loginHref as never} className="text-sm font-medium text-foreground hover:underline">
           Back to sign in
         </Link>
       </div>
@@ -105,7 +113,7 @@ export function SignupForm() {
 
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-foreground hover:underline">
+        <Link href={loginHref as never} className="font-medium text-foreground hover:underline">
           Sign in
         </Link>
       </p>

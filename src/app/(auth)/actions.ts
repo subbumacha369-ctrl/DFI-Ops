@@ -14,6 +14,11 @@ import {
 
 type ActionResult = { error?: string; message?: string };
 
+/** Only allow same-origin relative paths as post-auth redirects (no open redirect). */
+function safeNext(path?: string | null): string {
+  return path && path.startsWith("/") && !path.startsWith("//") ? path : "/";
+}
+
 async function origin(): Promise<string> {
   const h = await headers();
   return (
@@ -22,10 +27,10 @@ async function origin(): Promise<string> {
   );
 }
 
-export async function signInWithPassword(input: {
-  email: string;
-  password: string;
-}): Promise<ActionResult> {
+export async function signInWithPassword(
+  input: { email: string; password: string },
+  next?: string,
+): Promise<ActionResult> {
   const parsed = loginSchema.safeParse(input);
   if (!parsed.success) return { error: "Enter a valid email and password" };
 
@@ -42,14 +47,13 @@ export async function signInWithPassword(input: {
   if (aal?.nextLevel === "aal2" && aal.nextLevel !== aal.currentLevel) {
     redirect("/mfa");
   }
-  redirect("/");
+  redirect(safeNext(next) as never);
 }
 
-export async function signUp(input: {
-  fullName: string;
-  email: string;
-  password: string;
-}): Promise<ActionResult> {
+export async function signUp(
+  input: { fullName: string; email: string; password: string },
+  next?: string,
+): Promise<ActionResult> {
   const parsed = signupSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid details" };
@@ -58,12 +62,15 @@ export async function signUp(input: {
   const { success } = await checkLimit(authRatelimit, `signup:${parsed.data.email}`);
   if (!success) return { error: "Too many attempts. Try again shortly." };
 
+  // After email confirmation, land the user where they were headed (e.g. an
+  // invitation accept page) rather than the app root.
+  const confirmUrl = `${await origin()}/auth/confirm?next=${encodeURIComponent(safeNext(next))}`;
   const supabase = await createClient();
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
-      emailRedirectTo: `${await origin()}/auth/confirm`,
+      emailRedirectTo: confirmUrl,
       data: { full_name: parsed.data.fullName },
     },
   });
