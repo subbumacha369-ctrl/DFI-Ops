@@ -23,6 +23,15 @@ export default async function MembersPage({
     .maybeSingle();
   if (!org) redirect("/");
 
+  // Only owners/admins can invite — don't show the button to members.
+  const { data: me } = await supabase
+    .from("org_members")
+    .select("role")
+    .eq("org_id", org.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const canInvite = !!me && ["owner", "admin"].includes(me.role);
+
   return (
     <>
       <AppTopbar title="Members" />
@@ -35,7 +44,7 @@ export default async function MembersPage({
                 Manage who belongs to this organization and their roles.
               </p>
             </div>
-            <InviteMemberDialog orgId={org.id} />
+            {canInvite && <InviteMemberDialog orgId={org.id} />}
           </div>
           <MembersTable orgId={org.id} currentUserId={user.id} />
         </div>

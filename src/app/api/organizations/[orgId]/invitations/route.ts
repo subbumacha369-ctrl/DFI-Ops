@@ -60,6 +60,18 @@ export async function POST(request: Request, { params }: Ctx) {
   } = await supabase.auth.getUser();
   if (!user) return unauthorized();
 
+  // Only org owners/admins may invite (RLS enforces this too — pre-check so the
+  // caller gets a clear message instead of a raw row-level-security error).
+  const { data: me } = await supabase
+    .from("org_members")
+    .select("role")
+    .eq("org_id", orgId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me || !["owner", "admin"].includes(me.role)) {
+    return error("You don't have permission to invite members to this organization.", 403);
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = inviteMemberSchema.safeParse(body);
   if (!parsed.success) return error("Invalid invitation", 422, parsed.error.flatten());
@@ -118,10 +130,13 @@ export async function POST(request: Request, { params }: Ctx) {
     .select("id, email, role, token, status, expires_at")
     .maybeSingle();
 
-  // 23505 = unique_violation (race against the one-pending-per-email index).
   if (iErr) {
-    if ((iErr as { code?: string }).code === "23505") {
-      return error("This user already has a pending invitation.", 409);
+    const code = (iErr as { code?: string }).code;
+    // 23505 = unique_violation (race against the one-pending-per-email index).
+    if (code === "23505") return error("This user already has a pending invitation.", 409);
+    // 42501 = RLS violation (caller isn't an admin).
+    if (code === "42501") {
+      return error("You don't have permission to invite members to this organization.", 403);
     }
     return error(iErr.message, 403);
   }
